@@ -12,7 +12,7 @@ from io import BytesIO
 
 
 def loadRawADPExcel(rawExcelFile):
-    df = pd.read_excel(rawExcelFile, index_col=None, usecols="A,C,D,F,G,H,J,K,L",
+    df = pd.read_excel(rawExcelFile, index_col=None, usecols="A,C,D,F,G,H,J,K,L", engine="openpyxl"
                        names=['Work_code', 'Day', 'Date', 'Work_Time_Frame', 'First_Name', 'Lunch', 'Hours', 'Sup_Info', 'Identify'])
     df = df.where(df.notnull(), None)
     dfAsListofLists = df.values.tolist()
@@ -239,7 +239,8 @@ st.set_page_config(page_title='ADP Summary Generator')
 st.title("ADP Summary Generator")
 st.subheader("Please upload your ADP Excel File:")
 
-uploaded_file = st.file_uploader('Select the ADP Time Sheet .xlsx file', type='xlsx')
+uploaded_file = st.file_uploader(
+    'Select the ADP Time Sheet .xlsx file', type='xlsx')
 if uploaded_file:
     st.write('File Uploaded.')
     rawDataDf = loadRawADPExcel(uploaded_file)
@@ -253,5 +254,3 @@ if uploaded_file:
     st.markdown(get_table_download_link(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf, ptoStatsDf,
                                         missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf), unsafe_allow_html=True)
     st.write("File has been processed. Click link to download file.")
-
-
