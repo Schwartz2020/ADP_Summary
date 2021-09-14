@@ -12,8 +12,8 @@ from io import BytesIO
 
 
 def loadRawADPExcel(rawExcelFile):
-    df = pd.read_excel(rawExcelFile, index_col=None, usecols="A,C,D,F,G,H,J,K,L", engine="openpyxl"
-                       names=['Work_code', 'Day', 'Date', 'Work_Time_Frame', 'First_Name', 'Lunch', 'Hours', 'Sup_Info', 'Identify'])
+    df = pd.read_excel(rawExcelFile, index_col=None, usecols="A,C,D,F,G,H,J,K,L", engine="openpyxl", names=[
+                       'Work_code', 'Day', 'Date', 'Work_Time_Frame', 'First_Name', 'Lunch', 'Hours', 'Sup_Info', 'Identify'])
     df = df.where(df.notnull(), None)
     dfAsListofLists = df.values.tolist()
     currentEmployeeName = ""
