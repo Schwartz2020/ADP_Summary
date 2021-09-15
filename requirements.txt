@@ -4,3 +4,4 @@ numpy==1.19.4
 xlrd>=1.0.0
 openpyxl
 xlsxwriter
+datetime

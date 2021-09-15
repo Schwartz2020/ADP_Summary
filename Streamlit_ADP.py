@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import base64
 from io import BytesIO
+import datetime
 # import os
 # import openpyxl as op
 # from openpyxl import load_workbook
@@ -112,6 +113,33 @@ def getDriverWorkDayStats(rawDataDf):
     return driverWorkDayStatsDf
 
 
+def timeDiffCalculation(clockIn, clockOut):
+    timeA = datetime.datetime.strptime(clockIn, "%I:%M %p")
+    timeB = datetime.datetime.strptime(clockOut, "%I:%M %p")
+    timeDiff = ((timeB-timeA).total_seconds()/60)
+    return timeDiff
+
+
+def getBreakStats(rawDataDf):
+    # Only work instances
+    rawDataNoPTODf = rawDataDf.query(
+        '(Sup_Info != "PTO") & (Work_Time_Frame.str.count(":") > 1)')
+    rawDataNoPTODf[["ClockIn", "ClockOut"]
+                   ] = rawDataNoPTODf["Work_Time_Frame"].str.split('-', 1, expand=True)
+    rawDataNoPTODf["Mins_Worked"] = rawDataNoPTODf.apply(
+        lambda row: timeDiffCalculation(row.ClockIn.strip(), row.ClockOut.strip()), axis=1)
+    groupedData = rawDataNoPTODf.groupby(['Full_Name', 'Date'])
+    groupCounts = groupedData.size().to_frame(name='Breaks')
+    groupCounts["Breaks"] = groupCounts["Breaks"]-1
+    cleanerBreakStatsDf = groupCounts.join(groupedData.agg({'ClockIn': 'first'})).join(groupedData.agg(
+        {'ClockOut': 'last'})).join(groupedData.agg({'Mins_Worked': 'sum'})).join(groupedData.agg({'Hours': 'sum'}).rename(columns={'Hours': 'Hours_Worked'})).reset_index()
+    cleanerBreakStatsDf["Mins_On_Break"] = cleanerBreakStatsDf.apply(
+        lambda x: timeDiffCalculation(x.ClockIn.strip(), x.ClockOut.strip())-x.Mins_Worked, axis=1)
+    breakStatsDf = cleanerBreakStatsDf[[
+        "Full_Name", "Date", "Breaks", "Mins_On_Break", "Hours_Worked"]]
+    return breakStatsDf
+
+
 def getPTOStats(rawDataDf):
     rawDataPTODf = rawDataDf.query('Sup_Info=="PTO"')
     groupedDataDaysOfWeek = getDaysOfWeek(rawDataPTODf)
@@ -142,14 +170,14 @@ def getNotClockedOutInstances(rawDataDf):
     return notClockedOutInstancesDf
 
 
-def as_text(value):
-    if value is None:
-        return ""
-    return str(value)
+# def as_text(value):
+#     if value is None:
+#         return ""
+#     return str(value)
 
 
 def sendDataToExcelFile(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf,
-                        ptoStatsDf,  missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf):
+                        ptoStatsDf, breakStatsDf,  missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf):
 
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
@@ -189,32 +217,42 @@ def sendDataToExcelFile(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf,
         0, 0, max_row4, max_col4-1, {'columns': columns4})
     (writer.sheets['PTO Hours']).set_column('A:M', 18, cell_format)
     #
+    breakStatsDf.to_excel(
+        writer, index=False, startrow=1, header=False, sheet_name='Break Stats')
+    columns5 = [{'header': column}
+                for column in breakStatsDf.columns]
+    (max_row5, max_col5) = breakStatsDf.shape
+    (writer.sheets['Break Stats']).add_table(
+        0, 0, max_row5, max_col5-1, {'columns': columns5})
+    (writer.sheets['Break Stats']
+     ).set_column('A:M', 18, cell_format)
+    #
     missingLunchClockoutsDf.to_excel(
         writer, index=False, startrow=1, header=False, sheet_name='Missing Lunch Clockouts')
-    columns5 = [{'header': column}
+    columns6 = [{'header': column}
                 for column in missingLunchClockoutsDf.columns]
-    (max_row5, max_col5) = missingLunchClockoutsDf.shape
+    (max_row6, max_col6) = missingLunchClockoutsDf.shape
     (writer.sheets['Missing Lunch Clockouts']).add_table(
-        0, 0, max_row5, max_col5-1, {'columns': columns5})
+        0, 0, max_row6, max_col6-1, {'columns': columns6})
     (writer.sheets['Missing Lunch Clockouts']
      ).set_column('A:M', 18, cell_format)
     #
     missingLunchInstancesDf.to_excel(
         writer, index=False, startrow=1, header=False, sheet_name='Missing Lunches')
-    columns6 = [{'header': column}
+    columns7 = [{'header': column}
                 for column in missingLunchInstancesDf.columns]
-    (max_row6, max_col6) = missingLunchInstancesDf.shape
+    (max_row7, max_col7) = missingLunchInstancesDf.shape
     (writer.sheets['Missing Lunches']).add_table(
-        0, 0, max_row6, max_col6-1, {'columns': columns6})
+        0, 0, max_row7, max_col7-1, {'columns': columns7})
     (writer.sheets['Missing Lunches']).set_column('A:M', 18, cell_format)
     #
     notClockedOutInstancesDf.to_excel(
         writer, index=False, startrow=1, header=False, sheet_name='Missing Clockouts')
-    columns7 = [{'header': column}
+    columns8 = [{'header': column}
                 for column in notClockedOutInstancesDf.columns]
-    (max_row7, max_col7) = notClockedOutInstancesDf.shape
+    (max_row8, max_col8) = notClockedOutInstancesDf.shape
     (writer.sheets['Missing Clockouts']).add_table(
-        0, 0, max_row7, max_col7-1, {'columns': columns7})
+        0, 0, max_row8, max_col8-1, {'columns': columns8})
     (writer.sheets['Missing Clockouts']).set_column('A:M', 18, cell_format)
     #
     writer.save()
@@ -223,12 +261,12 @@ def sendDataToExcelFile(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf,
 
 
 def get_table_download_link(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf,
-                            ptoStatsDf,  missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf):
+                            ptoStatsDf,  breakStatsDf, missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf):
     """Generates a link allowing the data in a given panda dataframe to be downloaded
     in:  dataframe
     out: href string
     """
-    val = sendDataToExcelFile(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf, ptoStatsDf,
+    val = sendDataToExcelFile(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf, ptoStatsDf, breakStatsDf,
                               missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf)
     b64 = base64.b64encode(val)  # val looks like b'...'
     # decode b'abc' => abc
@@ -247,10 +285,11 @@ if uploaded_file:
     teamWorkWeekStatsDf = getTeamWorkWeekStats(rawDataDf)
     driverWorkDayStatsDf = getDriverWorkDayStats(rawDataDf)
     ptoStatsDf = getPTOStats(rawDataDf)
+    breakStatsDf = getBreakStats(rawDataDf)
     missingLunchClockoutsDf = getMissingLunchClockouts(rawDataDf)
     missingLunchInstancesDf = getMissingLunchInstances(rawDataDf)
     notClockedOutInstancesDf = getNotClockedOutInstances(rawDataDf)
     # Send out data
-    st.markdown(get_table_download_link(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf, ptoStatsDf,
+    st.markdown(get_table_download_link(rawDataDf, teamWorkWeekStatsDf, driverWorkDayStatsDf, ptoStatsDf, breakStatsDf,
                                         missingLunchClockoutsDf, missingLunchInstancesDf, notClockedOutInstancesDf), unsafe_allow_html=True)
     st.write("File has been processed. Click link to download file.")
