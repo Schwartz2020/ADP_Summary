@@ -120,6 +120,16 @@ def timeDiffCalculation(clockIn, clockOut):
     return timeDiff
 
 
+def timeDiffCalculationModified(clockIn, clockOut):
+    try:
+        timeA = datetime.datetime.strptime(clockIn, "%I:%M %p")
+        timeB = datetime.datetime.strptime(clockOut, "%I:%M %p")
+        timeDiff = ((timeB-timeA).total_seconds()/60)
+        return timeDiff
+    except Exception:
+        return -1  # To negate 5-hr condition
+
+
 def getBreakStats(rawDataDf):
     # Only work instances
     rawDataNoPTODf = rawDataDf.query(
@@ -131,12 +141,16 @@ def getBreakStats(rawDataDf):
     groupedData = rawDataNoPTODf.groupby(['Full_Name', 'Date'])
     groupCounts = groupedData.size().to_frame(name='Breaks')
     groupCounts["Breaks"] = groupCounts["Breaks"]-1
-    cleanerBreakStatsDf = groupCounts.join(groupedData.agg({'ClockIn': 'first'})).join(groupedData.agg(
+    cleanerBreakStatsDf = groupCounts.join(groupedData.agg({'ClockIn': 'first'})).join(groupedData.agg({'ClockIn_lag': 'first'}).rename(columns={'ClockIn_lag': 'Second_ClockIn'})).join(groupedData.agg({'ClockOut': 'first'}).rename(columns={'ClockOut': 'First_ClockOut'})).join(groupedData.agg(
         {'ClockOut': 'last'})).join(groupedData.agg({'Mins_Worked': 'sum'})).join(groupedData.agg({'Hours': 'sum'}).rename(columns={'Hours': 'Hours_Worked'})).reset_index()
     cleanerBreakStatsDf["Mins_On_Break"] = cleanerBreakStatsDf.apply(
-        lambda x: timeDiffCalculation(x.ClockIn.strip(), x.ClockOut.strip())-x.Mins_Worked, axis=1)
+        lambda x: timeDiffCalculation(x.ClockIn, x.ClockOut)-x.Mins_Worked, axis=1)
+    cleanerBreakStatsDf["Break_Check"] = cleanerBreakStatsDf.apply(
+        lambda x: timeDiffCalculationModified(x.First_ClockOut, x.Second_ClockIn), axis=1)
+    cleanerBreakStatsDf["5_hr_Compliant"] = cleanerBreakStatsDf.apply(
+        lambda x: "Yes" if (timeDiffCalculation(x.ClockIn, x.First_ClockOut) < 300) & (x.Break_Check >= 30) & (x.Hours_Worked >= 7.5) else ("N/A" if (x.Hours_Worked < 7.5) else "No"), axis=1)
     breakStatsDf = cleanerBreakStatsDf[[
-        "Full_Name", "Date", "Breaks", "Mins_On_Break", "Hours_Worked"]]
+        "Full_Name", "Date", "Hours_Worked", "Breaks", "Mins_On_Break", "ClockIn", "First_ClockOut", "Second_ClockIn", "5_hr_Compliant"]]
     return breakStatsDf
 
 
